@@ -12,14 +12,31 @@ interface SearchDialogProps {
 
 const SearchDialog = ({ className = '', onClose }: SearchDialogProps) => {
     const [searchValue, setSearchValue] = useState<string>('')
+    const [debouncedValue, setDebouncedValue] = useState<string>(searchValue)
+    const [results, setResults] = useState<SearchResult | null>(null)
+    const [suggestions, setSuggestions] = useState<string[]>([])
+    const [cast, setCast] = useState<MovieCast[] | null>(null)
 
-    //  Will update the search keyword state when value of the search input changes.
+    // Handle input change and fetch suggestions
     const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-        setSearchValue(event.target.value)
+        const value = event.target.value
+        setSearchValue(value)
+
+        // Fetch suggestions when input changes
+        if (value.trim() !== '') {
+            axios
+                .post('/search/suggestions', { keyword: value })
+                .then((res) => {
+                    setSuggestions(res.data.suggestions)
+                })
+                .catch(() => setSuggestions([]))
+        } else {
+            setSuggestions([])
+        }
     }
 
+    // Debounce search value
     const delay = 500
-    const [debouncedValue, setDebouncedValue] = useState<string>(searchValue)
     useEffect(() => {
         const handler = setTimeout(() => {
             setDebouncedValue(searchValue)
@@ -27,42 +44,32 @@ const SearchDialog = ({ className = '', onClose }: SearchDialogProps) => {
 
         return () => {
             clearTimeout(handler)
-            setDebouncedValue('')
         }
     }, [searchValue, delay])
 
-    // Search results
-    const [results, setResults] = useState<SearchResult | null>(null)
+    // Fetch search results
     useEffect(() => {
         if (debouncedValue) {
-            // Search for movies.
             axios
-                .post('/search', {
-                    keyword: searchValue
-                })
-                .then(res => {
-                    // console.log(res.data)
+                .post('/search', { keyword: debouncedValue })
+                .then((res) => {
                     setResults(res.data.result)
                 })
-        }
-
-        if (searchValue === '') {
+        } else {
             setResults(null)
         }
     }, [debouncedValue])
 
-    // Show the casts of the selected movie.
-    const [cast, setCast] = useState<MovieCast[] | null>(null)
+    // Show movie cast
     const showCasts = (movieCast: MovieCast[]) => {
         setCast(movieCast)
     }
 
+    // Handle pagination
     const paginate = (url: string) => {
         axios
-            .post(url, {
-                keyword: searchValue
-            })
-            .then(res => {
+            .post(url, { keyword: searchValue })
+            .then((res) => {
                 setResults(res.data.result)
             })
     }
@@ -72,7 +79,7 @@ const SearchDialog = ({ className = '', onClose }: SearchDialogProps) => {
             <div className={className} onClick={() => onClose()}></div>
             <div className="absolute left-1/2 top-1/2 z-30 flex max-h-[550px] w-[640px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl bg-white p-4 shadow-xl">
                 {/* Search input */}
-                <div className="flex items-center rounded-lg border-2 border-black/10 bg-gray-200 px-4">
+                <div className="relative flex items-center rounded-lg border-2 border-black/10 bg-gray-200 px-4">
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
                         fill="none"
@@ -102,11 +109,30 @@ const SearchDialog = ({ className = '', onClose }: SearchDialogProps) => {
                     >
                         ESC
                     </span>
+
+                    {/* Suggestions dropdown */}
+                    {suggestions.length > 0 && (
+                        <div className="absolute top-full left-0 z-40 mt-1 max-h-40 w-full overflow-y-auto rounded-lg bg-white shadow-md">
+                            {suggestions.map((suggestion, index) => (
+                                <div
+                                    key={index}
+                                    className="cursor-pointer px-4 py-2 hover:bg-gray-100"
+                                    onClick={() => {
+                                        setSearchValue(suggestion) // Set the clicked suggestion as the input value
+                                        setSuggestions([]) // Clear suggestions
+                                    }}
+                                >
+                                    {suggestion}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Search results */}
                 <div
-                    className={`relative flex max-h-[640px] flex-col gap-4 overflow-y-scroll ${results && results?.data.hits.length > 0 ? 'mt-4' : null}`}
+                    className={`relative flex max-h-[640px] flex-col gap-4 overflow-y-scroll ${results && results?.data.hits.length > 0 ? 'mt-4' : null
+                        }`}
                 >
                     {/* Casts list */}
                     {cast && cast.length > 0 && (
@@ -123,8 +149,8 @@ const SearchDialog = ({ className = '', onClose }: SearchDialogProps) => {
                                 </h3>
                                 <div className="flex overflow-y-scroll">
                                     <ul className="flex flex-col">
-                                        {cast?.map(actor => (
-                                            <li className="">
+                                        {cast?.map((actor) => (
+                                            <li key={actor.character}>
                                                 <span className="font-medium">
                                                     {actor.original_name}
                                                 </span>{' '}
@@ -138,7 +164,7 @@ const SearchDialog = ({ className = '', onClose }: SearchDialogProps) => {
                     )}
 
                     {/* Movie list */}
-                    {results?.data.hits.map(movie => (
+                    {results?.data.hits.map((movie) => (
                         <div
                             className="flex cursor-pointer gap-4 rounded-xl p-2 transition duration-300 ease-in-out hover:bg-gray-100 hover:shadow-sm"
                             key={movie.id}
@@ -149,14 +175,13 @@ const SearchDialog = ({ className = '', onClose }: SearchDialogProps) => {
                                 className="h-36 w-28 rounded-lg object-cover"
                             />
                             <div className="flex flex-col gap-2">
-                                {/* If attribute highlighting is enabled, show the formatted result. */}
                                 {movie._formatted ? (
                                     <div
                                         className="title gap-2 text-lg font-bold"
                                         dangerouslySetInnerHTML={{
                                             __html: DOMPurify.sanitize(
                                                 movie._formatted.original_title
-                                            )
+                                            ),
                                         }}
                                     ></div>
                                 ) : (
@@ -169,14 +194,13 @@ const SearchDialog = ({ className = '', onClose }: SearchDialogProps) => {
                                     Overview
                                 </span>
 
-                                {/* If attribute highlighting is enabled, show the formatted result. */}
                                 {movie._formatted ? (
                                     <div
                                         className="overview text-sm text-gray-600"
                                         dangerouslySetInnerHTML={{
                                             __html: DOMPurify.sanitize(
                                                 movie._formatted.overview
-                                            )
+                                            ),
                                         }}
                                     ></div>
                                 ) : (
@@ -210,44 +234,38 @@ const SearchDialog = ({ className = '', onClose }: SearchDialogProps) => {
 
                 {/* Pagination */}
                 {results && results.data.hits.length > 0 && (
-                    <>
-                        <div className="mt-4 flex justify-between border-t border-gray-200 pt-4 font-mono text-xs">
-                            <span className="font-medium">
-                                <span className="text-gray-500">
-                                    Total Hits:
-                                </span>{' '}
-                                {results.data.totalHits} results
-                            </span>
+                    <div className="mt-4 flex justify-between border-t border-gray-200 pt-4 font-mono text-xs">
+                        <span className="font-medium">
+                            <span className="text-gray-500">Total Hits:</span>{' '}
+                            {results.data.totalHits} results
+                        </span>
 
-                            <span className="font-medium">
-                                <span className="text-gray-500">
-                                    Total Pages:
-                                </span>{' '}
-                                {results.data.page} of {results.data.totalPages}
-                            </span>
+                        <span className="font-medium">
+                            <span className="text-gray-500">Total Pages:</span>{' '}
+                            {results.data.page} of {results.data.totalPages}
+                        </span>
 
-                            <div className="flex gap-2">
-                                <button
-                                    type="button"
-                                    className="rounded-md bg-black px-2 py-1 text-white hover:bg-gray-700"
-                                    onClick={() =>
-                                        paginate(results.prev_page_url)
-                                    }
-                                >
-                                    Prev
-                                </button>
-                                <button
-                                    type="button"
-                                    className="rounded-md bg-black px-2 py-1 text-xs text-white hover:bg-gray-700"
-                                    onClick={() =>
-                                        paginate(results.next_page_url)
-                                    }
-                                >
-                                    Next
-                                </button>
-                            </div>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                className="rounded-md bg-black px-2 py-1 text-white hover:bg-gray-700"
+                                onClick={() =>
+                                    paginate(results.prev_page_url)
+                                }
+                            >
+                                Prev
+                            </button>
+                            <button
+                                type="button"
+                                className="rounded-md bg-black px-2 py-1 text-xs text-white hover:bg-gray-700"
+                                onClick={() =>
+                                    paginate(results.next_page_url)
+                                }
+                            >
+                                Next
+                            </button>
                         </div>
-                    </>
+                    </div>
                 )}
             </div>
         </>

@@ -16,6 +16,7 @@ Route::get('/', function () {
 });
 
 Route::post('/search', [MovieController::class, 'search']);
+Route::post('/search/suggestions', [MovieController::class, 'getSuggestions']);
 
 Route::get('/dashboard', function () {
     return Inertia::render('Dashboard');
